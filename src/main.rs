@@ -20,21 +20,36 @@ fn handle_connection(mut client: TcpStream) {
     let mut request = [0; KILOBYTE * 8];
     let mut response = [0; KILOBYTE * 8096];
 
-    let bytes = client.read(&mut request).unwrap();
+    let mut bytes = client.read(&mut request).unwrap();
     if bytes == 0 || !request.starts_with(b"GET") { return; }
 
     let domain = parse_domain(std::str::from_utf8(&request).unwrap());
     let mut server = TcpStream::connect(format!("{}{}", domain, ":80")).unwrap();
     
+    // is the request asking for a jpeg?
+    let image = std::str::from_utf8(&request)
+        .unwrap()
+        .contains(".jpg");
+    
+    if image {
+        let r = format!(
+            "GET http://pages.cpsc.ucalgary.ca/~carey/CPSC441/ass1/clown{}.png HTTP/1.0\r\n\r\n",
+            fastrand::bool() as u8 + 1
+        );
+        bytes = r.len();
+        (&mut request[..bytes]).copy_from_slice(r.as_bytes());
+    }
+
     server.write(&request[..bytes]).unwrap();
     while let Ok(bytes) = server.read(&mut response) {
         let response = &mut response[..bytes];
-        happy_silly_sub(response);
-        client.write(&response).unwrap();
+        if !image { happy_silly_sub(response); }
+        if client.write(response).unwrap() == 0 { return; }
     }
 }
 
 fn parse_domain(request: &str) -> &str {
+    // extract the path from the first line
     let mut domain = request
         .lines()
         .next()
@@ -79,6 +94,7 @@ fn happy_silly_sub(s: &mut [u8]) {
     lazy_static! {
         static ref RE: Regex = Regex::new("(?i)happy").unwrap();
     }
+    if !RE.is_match(s) { return; }
     let mut replaces = Vec::with_capacity(s.len() / 5);
     for range in RE.find_iter(s).map(|word| word.range()) {
         let mut arr = b"silly".to_owned();

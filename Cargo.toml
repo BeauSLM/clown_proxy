@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 regex = "*"
 lazy_static = { git = "https:/github.com/rust-lang-nursery/lazy-static.rs" }
+fastrand = "*"
