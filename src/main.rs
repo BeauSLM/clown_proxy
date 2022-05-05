@@ -4,7 +4,7 @@ use std::env::{ self, Args };
 use std::process;
 
 fn main() {
-    let port = rust_clown_proxy::parse_port(env::args());
+    let port = parse_port(env::args());
     let listener = TcpListener::bind(format!("{}{}", "127.0.0.1:", port)).unwrap();
     for stream in listener.incoming() {
         let stream = stream.unwrap();
@@ -19,7 +19,7 @@ fn handle_connection(mut client: TcpStream) {
     let mut response = [0; KILOBYTE * 8096];
 
     let bytes = client.read(&mut request).unwrap();
-    if bytes == 0 || !request.starts_with("GET".as_bytes()) { return; }
+    if bytes == 0 || !request.starts_with(b"GET") { return; }
 
     let domain = parse_domain(std::str::from_utf8(&request).unwrap());
     let mut server = TcpStream::connect(format!("{}{}", domain, ":80")).unwrap();
