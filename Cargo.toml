@@ -1,5 +1,5 @@
 [package]
-name = "rust_clown_proxy"
+name = "clown_proxy"
 version = "0.1.0"
 edition = "2021"
 
