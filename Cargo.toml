@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+tokio = { version = "*", features = ["full"]}
 regex = "*"
 lazy_static = { git = "https:/github.com/rust-lang-nursery/lazy-static.rs" }
 fastrand = "*"

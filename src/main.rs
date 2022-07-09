@@ -1,51 +1,55 @@
-use std::io::prelude::*;
-use std::net::{ TcpListener, TcpStream };
+use tokio::io::{ AsyncReadExt, AsyncWriteExt };
+use tokio::net::{ TcpListener, TcpStream };
 use std::env::{ self, Args };
 use std::process;
 use lazy_static::lazy_static;
 use regex::bytes::Regex;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let port = parse_port(env::args());
-    let listener = TcpListener::bind(format!("{}{}", "127.0.0.1:", port)).unwrap();
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
+    let listener = TcpListener::bind(format!("{}{}", "127.0.0.1:", port)).await.unwrap();
+    loop {
+        let (stream, addr) = listener.accept().await.unwrap();
         
-        handle_connection(stream);
+        if let Err(e) = handle_connection(stream).await {
+            eprintln!("Problem with connection to {addr}: {e}");
+        }
     }
 }
 
-fn handle_connection(mut client: TcpStream) {
+async fn handle_connection(mut client: TcpStream) -> tokio::io::Result<()> {
     const KILOBYTE: usize = 1024;
     let mut request = [0; KILOBYTE * 8];
-    let mut response = [0; KILOBYTE * 8096];
+    let mut response = [0; KILOBYTE * 16];
 
-    let mut bytes = client.read(&mut request).unwrap();
-    if bytes == 0 || !request.starts_with(b"GET") { return; }
+    let mut bytes = client.read(&mut request).await?;
+    if bytes == 0 || !request.starts_with(b"GET") { return Ok(()); } // TODO: return better error
 
-    let domain = parse_domain(std::str::from_utf8(&request).unwrap());
-    let mut server = TcpStream::connect(format!("{}{}", domain, ":80")).unwrap();
+    let str = std::str::from_utf8(&request).unwrap();
+    let domain = parse_domain(str);
+    let mut server = TcpStream::connect(format!("{}{}", domain, ":80")).await?;
     
     // is the request asking for a jpeg?
-    let image = std::str::from_utf8(&request)
-        .unwrap()
-        .contains(".jpg");
+    let image: bool = str.contains(".jpg");
     
     if image {
-        let r = format!(
+        let clown_url = format!(
             "GET http://pages.cpsc.ucalgary.ca/~carey/CPSC441/ass1/clown{}.png HTTP/1.0\r\n\r\n",
             fastrand::bool() as u8 + 1
         );
-        bytes = r.len();
-        (&mut request[..bytes]).copy_from_slice(r.as_bytes());
+        bytes = clown_url.len();
+        (&mut request[..bytes]).copy_from_slice(clown_url.as_bytes());
     }
 
-    server.write(&request[..bytes]).unwrap();
-    while let Ok(bytes) = server.read(&mut response) {
+    server.try_write(&request[..bytes])?;
+    while let Ok(bytes) = server.read(&mut response).await {
         let response = &mut response[..bytes];
         if !image { happy_silly_sub(response); }
-        if client.write(response).unwrap() == 0 { return; }
+        if client.write(response).await? == 0 { return Ok(()); }
     }
+    
+    Ok(())
 }
 
 fn parse_domain(request: &str) -> &str {
@@ -67,7 +71,7 @@ fn parse_domain(request: &str) -> &str {
 pub fn parse_port(mut args: Args) -> u16 {
     let name = args.next().unwrap(); // name of the executable
     fn usage(name: String) {
-        eprintln!("Usage: {name} <port>, where 23 < <port> < 65536");
+        eprintln!("Usage: {name} <port>, where 1023 < <port> < 65536");
         process::exit(1);
     }
     if args.len() != 1 {
@@ -76,7 +80,7 @@ pub fn parse_port(mut args: Args) -> u16 {
     }
     
     match args.next().unwrap().parse::<u16>() {
-        Ok(port) if port < 24 => {
+        Ok(port) if port < 1024 => {
             usage(name);
             unreachable!();
         },
