@@ -1,16 +1,17 @@
-use tokio::io::{ AsyncReadExt, AsyncWriteExt };
+use tokio::io::{ AsyncReadExt, AsyncWriteExt, Error, Result };
 use tokio::net::{ TcpListener, TcpStream };
 use std::env::{ self, Args };
+use std::io::ErrorKind;
 use std::process;
 use lazy_static::lazy_static;
 use regex::bytes::Regex;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let port = parse_port(env::args());
-    let listener = TcpListener::bind(format!("{}{}", "127.0.0.1:", port)).await.unwrap();
+    let listener = TcpListener::bind(format!("{}{}", "127.0.0.1:", port)).await?;
     loop {
-        let (stream, addr) = listener.accept().await.unwrap();
+        let (stream, addr) = listener.accept().await?;
         
         if let Err(e) = handle_connection(stream).await {
             eprintln!("Problem with connection to {addr}: {e}");
@@ -18,13 +19,15 @@ async fn main() {
     }
 }
 
-async fn handle_connection(mut client: TcpStream) -> tokio::io::Result<()> {
+async fn handle_connection(mut client: TcpStream) -> Result<()> {
     const KILOBYTE: usize = 1024;
     let mut request = [0; KILOBYTE * 8];
     let mut response = [0; KILOBYTE * 16];
 
     let mut bytes = client.read(&mut request).await?;
-    if bytes == 0 || !request.starts_with(b"GET") { return Ok(()); } // TODO: return better error
+    if bytes == 0 || !request.starts_with(b"GET") {
+        return Err(Error::new(ErrorKind::Other, "Empty or non-get request"));
+    }
 
     let str = std::str::from_utf8(&request).unwrap();
     let domain = parse_domain(str);
@@ -46,7 +49,9 @@ async fn handle_connection(mut client: TcpStream) -> tokio::io::Result<()> {
     while let Ok(bytes) = server.read(&mut response).await {
         let response = &mut response[..bytes];
         if !image { happy_silly_sub(response); }
-        if client.write(response).await? == 0 { return Ok(()); }
+        if client.write(response).await? == 0 {
+            return Err(Error::new(ErrorKind::Other, "Client closed connection early"));
+        }
     }
     
     Ok(())
